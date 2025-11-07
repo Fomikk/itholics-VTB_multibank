@@ -1,5 +1,6 @@
 """Security utilities and middleware."""
 import re
+import time
 from typing import Optional
 from fastapi import Request, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -45,7 +46,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         client_ip = request.client.host if request.client else "unknown"
         
         # Clean old requests (older than 1 minute)
-        current_time = request.scope.get("time", 0)
+        current_time = time.time()
         if client_ip in self._request_counts:
             self._request_counts[client_ip] = [
                 req_time
