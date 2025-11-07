@@ -48,6 +48,7 @@ coverage/
 docker-data/
 **/pgdata/
 **/redis-data/
+docker-compose.override.yml
 
 # --- Misc ---
 *.sqlite3

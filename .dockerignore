@@ -1,0 +1,15 @@
+.git
+.gitignore
+.env
+.env.local
+*.log
+node_modules
+.venv
+venv
+__pycache__
+*.pyc
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
