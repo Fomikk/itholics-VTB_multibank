@@ -41,8 +41,18 @@ export default function Dashboard() {
 
       setAnalytics(analyticsData)
       setTransactions(transactionsData)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Ошибка загрузки данных')
+    } catch (err: any) {
+      let errorMessage = 'Ошибка загрузки данных'
+      
+      if (err?.code === 'ECONNREFUSED' || err?.message?.includes('ECONNREFUSED') || err?.message?.includes('Network Error')) {
+        errorMessage = 'Backend сервер не запущен. Запустите backend на http://localhost:8000'
+      } else if (err?.response?.status === 500) {
+        errorMessage = err?.response?.data?.detail || 'Внутренняя ошибка сервера'
+      } else if (err?.message) {
+        errorMessage = err.message
+      }
+      
+      setError(errorMessage)
       console.error('Failed to load dashboard data:', err)
     } finally {
       setLoading(false)
