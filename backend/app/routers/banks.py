@@ -155,17 +155,11 @@ async def aggregate_transactions(
     Raises:
         HTTPException: If aggregation fails
     """
-    bank_codes = None
-    if bank:
-        bank_lower = bank.lower()
-        if bank_lower not in ["vbank", "abank", "sbank"]:
-            raise HTTPException(
-                status_code=400, detail=f"Invalid bank code: {bank_lower}. Must be vbank, abank, or sbank"
-            )
-        bank_codes = [bank_lower]
-
     # Validate inputs
     client_id = validate_client_id(client_id)
+    bank_codes = None
+    if bank:
+        bank_codes = [validate_bank_code(bank)]
     
     # Parse and validate dates
     from_dt = None
