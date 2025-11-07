@@ -1,0 +1,58 @@
+﻿# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.iml
+
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.cache/
+.venv/
+venv/
+env/
+dist/
+build/
+.eggs/
+*.egg-info/
+.coverage
+htmlcov/
+
+# --- FastAPI/UVicorn logs ---
+*.log
+
+# --- Node/React ---
+node_modules/
+npm-debug.log*
+yarn.lock
+pnpm-lock.yaml
+package-lock.json
+dist/
+build/
+coverage/
+.eslintcache
+
+# --- Env / secrets ---
+.env
+*.env
+.env.local
+.env.*.local
+
+# --- Docker ---
+docker-data/
+**/pgdata/
+**/redis-data/
+
+# --- Misc ---
+*.sqlite3
+*.db
+*.pid
+*.swp
+*.tmp
+*.bak
