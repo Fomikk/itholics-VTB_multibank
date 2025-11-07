@@ -37,11 +37,8 @@ async def get_bank_token(bank: str, force_refresh: bool = False) -> TokenRespons
     Raises:
         HTTPException: If bank code is invalid or request fails
     """
-    bank_lower = bank.lower()
-    if bank_lower not in ["vbank", "abank", "sbank"]:
-        raise HTTPException(
-            status_code=400, detail=f"Invalid bank code: {bank}. Must be vbank, abank, or sbank"
-        )
+    # Validate bank code
+    bank_lower = validate_bank_code(bank)
 
     try:
         token_data = await TokenService.get_bank_token(bank_lower, force_refresh=force_refresh)
@@ -70,16 +67,14 @@ async def create_account_consent(request: ConsentRequest) -> ConsentResponse:
     Raises:
         HTTPException: If bank code is invalid or request fails
     """
-    bank_lower = request.bank.lower()
-    if bank_lower not in ["vbank", "abank", "sbank"]:
-        raise HTTPException(
-            status_code=400, detail=f"Invalid bank code: {bank_lower}. Must be vbank, abank, or sbank"
-        )
+    # Validate bank code and client ID
+    bank_lower = validate_bank_code(request.bank)
+    client_id = validate_client_id(request.client_id)
 
     try:
         consent_response = await ConsentService.request_accounts_consent(
             bank_code=bank_lower,
-            client_id=request.client_id,
+            client_id=client_id,
             permissions=request.permissions,
         )
 
@@ -112,14 +107,11 @@ async def aggregate_accounts(
     Raises:
         HTTPException: If aggregation fails
     """
+    # Validate inputs
+    client_id = validate_client_id(client_id)
     bank_codes = None
     if bank:
-        bank_lower = bank.lower()
-        if bank_lower not in ["vbank", "abank", "sbank"]:
-            raise HTTPException(
-                status_code=400, detail=f"Invalid bank code: {bank_lower}. Must be vbank, abank, or sbank"
-            )
-        bank_codes = [bank_lower]
+        bank_codes = [validate_bank_code(bank)]
 
     try:
         accounts = await AggregationService.get_accounts(client_id, bank_codes=bank_codes)
@@ -172,19 +164,20 @@ async def aggregate_transactions(
             )
         bank_codes = [bank_lower]
 
-    # Parse dates
+    # Validate inputs
+    client_id = validate_client_id(client_id)
+    
+    # Parse and validate dates
     from_dt = None
     to_dt = None
     if from_date:
-        try:
-            from_dt = datetime.fromisoformat(from_date.replace("Z", "+00:00"))
-        except ValueError:
-            raise HTTPException(status_code=400, detail=f"Invalid from_date format: {from_date}")
+        from_dt = validate_date_format(from_date)
     if to_date:
-        try:
-            to_dt = datetime.fromisoformat(to_date.replace("Z", "+00:00"))
-        except ValueError:
-            raise HTTPException(status_code=400, detail=f"Invalid to_date format: {to_date}")
+        to_dt = validate_date_format(to_date)
+    
+    # Validate date range
+    if from_dt and to_dt and from_dt > to_dt:
+        raise HTTPException(status_code=400, detail="from_date must be before to_date")
 
     try:
         transactions = await AggregationService.get_transactions(
@@ -223,15 +216,9 @@ async def get_analytics_summary(
     Raises:
         HTTPException: If analytics calculation fails
     """
-    # Parse period
-    period_days = 30
-    if period.endswith("d"):
-        try:
-            period_days = int(period[:-1])
-        except ValueError:
-            raise HTTPException(status_code=400, detail=f"Invalid period format: {period}")
-    else:
-        raise HTTPException(status_code=400, detail=f"Invalid period format: {period}. Use format like '30d'")
+    # Validate inputs
+    client_id = validate_client_id(client_id)
+    period_days = validate_period(period)
 
     try:
         summary = await AnalyticsService.get_summary(client_id, period_days=period_days)
@@ -253,11 +240,16 @@ async def activate_cashback(request: CashbackActivateRequest) -> CashbackActivat
     Raises:
         HTTPException: If activation fails
     """
+    # Validate inputs
+    client_id = validate_client_id(request.client_id)
+    category = validate_category(request.category)
+    bonus_percent = validate_bonus_percent(request.bonus_percent)
+    
     try:
         bonus = CashbackService.activate_cashback(
-            client_id=request.client_id,
-            category=request.category,
-            bonus_percent=request.bonus_percent,
+            client_id=client_id,
+            category=category,
+            bonus_percent=bonus_percent,
             valid_until=request.valid_until,
         )
 
@@ -284,6 +276,8 @@ async def get_active_cashback(
     Returns:
         List of active cashback bonuses
     """
+    # Validate input
+    client_id = validate_client_id(client_id)
     try:
         bonuses = CashbackService.get_active_bonuses(client_id)
         return [
