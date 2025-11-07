@@ -10,11 +10,20 @@
 
 ### 1. Backend
 
+#### Windows (простой способ):
+
+```bash
+cd backend
+start.bat
+```
+
+#### Или вручную:
+
 ```bash
 # Перейдите в директорию backend
 cd backend
 
-# Создайте виртуальное окружение
+# Создайте виртуальное окружение (если еще не создано)
 python -m venv venv
 
 # Активируйте виртуальное окружение
@@ -27,7 +36,8 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # Создайте .env файл (скопируйте из .env.sample и заполните)
-# Минимально необходимые переменные:
+# Минимально необходимые переменные для демо:
+# APP_ENV=dev
 # REQUESTING_BANK_ID=team200
 # VBANK_CLIENT_ID=your_client_id
 # VBANK_CLIENT_SECRET=your_client_secret
