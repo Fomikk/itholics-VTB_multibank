@@ -3,14 +3,15 @@ import { Link } from 'react-router-dom'
 import { PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { getAnalyticsSummary } from '../api/analytics'
 import { getTransactions } from '../api/transactions'
-import type { AnalyticsSummary, Transaction } from '../api/types'
+import { getLinkedAccounts } from '../api/accounts'
+import type { AnalyticsSummary, Transaction, LinkedAccount } from '../api/types'
 import Card from '../components/Card'
 import ErrorAlert from '../components/ErrorAlert'
 import LoadingSpinner from '../components/LoadingSpinner'
 import TransactionsTable from '../components/TransactionsTable'
 
 // Default client ID for demo
-const DEFAULT_CLIENT_ID = 'team200-1'
+const DEFAULT_CLIENT_ID = 'team268-1'
 
 // Colors for charts
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d']
@@ -20,6 +21,7 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null)
   const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null)
   const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [linkedAccounts, setLinkedAccounts] = useState<LinkedAccount[]>([])
 
   useEffect(() => {
     loadData()
@@ -30,17 +32,29 @@ export default function Dashboard() {
       setLoading(true)
       setError(null)
 
-      // Load analytics and transactions in parallel
-      const [analyticsData, transactionsData] = await Promise.all([
+      // Load analytics, transactions, and linked accounts in parallel
+      const [analyticsData, transactionsData, linkedAccountsData] = await Promise.all([
         getAnalyticsSummary(DEFAULT_CLIENT_ID, '30d'),
         getTransactions({
           client_id: DEFAULT_CLIENT_ID,
           from_date: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
         }),
+        getLinkedAccounts(DEFAULT_CLIENT_ID).catch(() => []), // Don't fail if no linked accounts
       ])
+
+      // Log received data for debugging
+      console.log('📊 Analytics data received:', {
+        net_worth: analyticsData.net_worth,
+        total_accounts: analyticsData.total_accounts,
+        total_spending: analyticsData.total_spending,
+        spending_by_category: analyticsData.spending_by_category,
+        transactions_count: transactionsData.length,
+        linked_accounts_count: linkedAccountsData.length,
+      })
 
       setAnalytics(analyticsData)
       setTransactions(transactionsData)
+      setLinkedAccounts(linkedAccountsData)
     } catch (err: any) {
       let errorMessage = 'Ошибка загрузки данных'
       
@@ -109,9 +123,75 @@ export default function Dashboard() {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">FinGuru Dashboard</h1>
-          <p className="text-gray-600">Обзор ваших финансов</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 mb-2">FinGuru Dashboard</h1>
+              <p className="text-gray-600">Обзор ваших финансов</p>
+            </div>
+            <Link
+              to="/connect"
+              className="px-4 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors"
+            >
+              Подключить счет
+            </Link>
+          </div>
         </div>
+
+        {/* Accounts Info Banner */}
+        {analytics && analytics.total_accounts > 0 ? (
+          <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-green-900 mb-1">
+                  ✅ Подключено счетов: {analytics.total_accounts}
+                </h3>
+                <p className="text-sm text-green-700">
+                  Данные успешно получены из банковских API
+                  {linkedAccounts.length > 0 && (
+                    <span className="ml-2">
+                      ({linkedAccounts.length} вручную связанных)
+                    </span>
+                  )}
+                </p>
+              </div>
+              <Link
+                to="/connect"
+                className="text-green-600 hover:text-green-700 text-sm font-medium"
+              >
+                Управление →
+              </Link>
+            </div>
+          </div>
+        ) : linkedAccounts.length > 0 ? (
+          <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-semibold text-yellow-900 mb-1">
+                  ⚠️ Вручную связанных счетов: {linkedAccounts.length}
+                </h3>
+                <p className="text-sm text-yellow-700">
+                  Счета связаны, но данные ещё не получены из банковских API. 
+                  Убедитесь, что банковские учетные данные настроены правильно.
+                </p>
+              </div>
+              <Link
+                to="/connect"
+                className="text-yellow-600 hover:text-yellow-700 text-sm font-medium"
+              >
+                Управление →
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <div className="mb-6 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+            <p className="text-sm text-yellow-800">
+              💡 <strong>Подключите банковские счета</strong> для отображения данных. 
+              <Link to="/connect" className="text-yellow-600 hover:text-yellow-700 underline ml-1">
+                Подключить сейчас →
+              </Link>
+            </p>
+          </div>
+        )}
 
         {/* Metrics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -224,8 +304,14 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* CTA Button */}
-        <div className="text-center">
+        {/* CTA Buttons */}
+        <div className="text-center space-x-4">
+          <Link
+            to="/connect"
+            className="inline-block px-6 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors"
+          >
+            Подключить счет
+          </Link>
           <Link
             to="/game"
             className="inline-block px-6 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors"

@@ -1,5 +1,6 @@
 """Bank-related API endpoints."""
-from datetime import datetime
+import logging
+from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 
@@ -12,13 +13,25 @@ from app.routers.schemas import (
     AnalyticsSummaryResponse,
     CashbackActivateRequest,
     CashbackActivateResponse,
+    LinkAccountRequest,
+    LinkedAccountResponse,
+    TestBalancesRequest,
 )
 from app.services.token_service import TokenService
 from app.services.consent_service import ConsentService
 from app.services.aggregation import AggregationService
 from app.services.analytics import AnalyticsService
 from app.services.cashback import CashbackService
+from app.services.account_linking import AccountLinkingService
 from app.core.exceptions import BankAPIError, ConsentRequiredError
+from app.core.input_validation import (
+    validate_bank_code,
+    validate_client_id,
+    validate_date_format,
+    validate_period,
+    validate_category,
+    validate_bonus_percent,
+)
 
 router = APIRouter(prefix="/api", tags=["banks"])
 
@@ -77,12 +90,33 @@ async def create_account_consent(request: ConsentRequest) -> ConsentResponse:
             client_id=client_id,
             permissions=request.permissions,
         )
-
+        
+        consent_status = consent_response.get("status", "")
+        consent_id = consent_response.get("consent_id")
+        request_id = consent_response.get("request_id")
+        auto_approved = consent_response.get("auto_approved", False)
+        
+        # Prepare response message based on status
+        message = None
+        if consent_status == "pending" and request_id:
+            # Manual approval required (SBank)
+            bank_name = bank_lower.upper()
+            message = (
+                f"Согласие создано и ожидает одобрения. "
+                f"Необходимо зайти в {bank_name} и одобрить запрос на доступ. "
+                f"Request ID: {request_id}"
+            )
+        elif consent_status == "approved" and consent_id:
+            # Auto-approved (VBank, ABank)
+            message = "Согласие автоматически одобрено. Можно получать данные."
+        
         return ConsentResponse(
-            consent_id=consent_response["consent_id"],
-            status=consent_response["status"],
-            auto_approved=consent_response.get("auto_approved", False),
+            consent_id=consent_id,
+            request_id=request_id,
+            status=consent_status,
+            auto_approved=auto_approved,
             bank=bank_lower,
+            message=message,
         )
     except BankAPIError as e:
         raise HTTPException(status_code=e.status_code, detail=e.detail)
@@ -173,10 +207,49 @@ async def aggregate_transactions(
     if from_dt and to_dt and from_dt > to_dt:
         raise HTTPException(status_code=400, detail="from_date must be before to_date")
 
+    logger = logging.getLogger(__name__)
     try:
         transactions = await AggregationService.get_transactions(
             client_id, from_date=from_dt, to_date=to_dt, bank_codes=bank_codes
         )
+        
+        # If no real transactions but have linked accounts, show demo transactions
+        # BUT: Only show demo if we don't have real account data
+        # If we have real accounts, show empty transactions list (real data)
+        linked_accounts = AccountLinkingService.get_linked_accounts(client_id)
+        
+        # Check if we have real account data
+        try:
+            real_accounts = await AggregationService.get_accounts(client_id)
+            has_real_accounts = len(real_accounts) > 0
+        except Exception:
+            has_real_accounts = False
+        
+        if len(transactions) == 0 and len(linked_accounts) > 0 and not has_real_accounts:
+            # Only show demo if we don't have real account data
+            logger.info(f"Showing demo transactions: no real transactions and no real account data")
+            # Check if we actually tried to get data (by checking if we have linked banks)
+            linked_banks = AccountLinkingService.get_banks_for_client(client_id)
+            # Only show demo if we have linked accounts but couldn't get real data
+            # Generate demo transactions
+            for i, acc in enumerate(linked_accounts[:3]):  # Max 3 accounts
+                for j in range(5):  # 5 transactions per account
+                    date = datetime.now() - timedelta(days=j*2)
+                    demo_txn = type('Transaction', (), {
+                        'transaction_id': f"demo-txn-{acc['bank']}-{i}-{j}",
+                        'account_id': acc['account_number'],
+                        'amount': str(-(1000 + j*500)),
+                        'currency': 'RUB',
+                        'booking_date': date.isoformat(),
+                        'description': ['Покупка в магазине', 'Транспорт', 'Ресторан', 'Аптека', 'Развлечения'][j],
+                        'mcc': ['5411', '4111', '5812', '5912', '7832'][j],
+                    })()
+                    transactions.append(demo_txn)
+        elif len(transactions) == 0 and has_real_accounts:
+            # Have real accounts but no transactions - show empty list (real data)
+            logger.info(f"Real accounts exist but no transactions - showing empty transactions list")
+            transactions = []
+        
         return [
             TransactionResponse(
                 transaction_id=txn.transaction_id,
@@ -214,10 +287,14 @@ async def get_analytics_summary(
     client_id = validate_client_id(client_id)
     period_days = validate_period(period)
 
+    logger = logging.getLogger(__name__)
     try:
+        logger.info(f"Getting analytics summary for client {client_id}, period {period_days} days")
         summary = await AnalyticsService.get_summary(client_id, period_days=period_days)
+        logger.info(f"Analytics summary: net_worth={summary.get('net_worth', 0)}, total_accounts={summary.get('total_accounts', 0)}, total_spending={summary.get('total_spending', 0)}")
         return AnalyticsSummaryResponse(**summary)
     except Exception as e:
+        logger.error(f"Error getting analytics summary: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to get analytics summary: {str(e)}")
 
 
@@ -285,3 +362,157 @@ async def get_active_cashback(
         ]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get active cashback: {str(e)}")
+
+
+@router.post("/accounts/link", response_model=LinkedAccountResponse)
+async def link_account(
+    request: LinkAccountRequest,
+    client_id: str = Query(..., description="Client ID"),
+) -> LinkedAccountResponse:
+    """Link a bank account to a client.
+    
+    Args:
+        request: Account linking request
+        client_id: Client ID
+        
+    Returns:
+        Linked account information
+    """
+    # Validate inputs
+    client_id = validate_client_id(client_id)
+    bank = validate_bank_code(request.bank)
+    
+    try:
+        linked_account = AccountLinkingService.link_account(
+            client_id=client_id,
+            bank=bank,
+            account_number=request.account_number,
+            account_id=request.account_id,
+            nickname=request.nickname,
+        )
+        
+        return LinkedAccountResponse(
+            id=linked_account["id"],
+            bank=linked_account["bank"],
+            account_number=linked_account["account_number"],
+            account_id=linked_account.get("account_id"),
+            nickname=linked_account["nickname"],
+            linked_at=linked_account["linked_at"],
+            active=linked_account["active"],
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to link account: {str(e)}")
+
+
+@router.get("/accounts/linked", response_model=list[LinkedAccountResponse])
+async def get_linked_accounts(
+    client_id: str = Query(..., description="Client ID"),
+) -> list[LinkedAccountResponse]:
+    """Get all linked accounts for a client.
+    
+    Args:
+        client_id: Client ID
+        
+    Returns:
+        List of linked accounts
+    """
+    # Validate input
+    client_id = validate_client_id(client_id)
+    
+    try:
+        accounts = AccountLinkingService.get_linked_accounts(client_id)
+        return [
+            LinkedAccountResponse(
+                id=acc["id"],
+                bank=acc["bank"],
+                account_number=acc["account_number"],
+                account_id=acc.get("account_id"),
+                nickname=acc["nickname"],
+                linked_at=acc["linked_at"],
+                active=acc["active"],
+            )
+            for acc in accounts
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get linked accounts: {str(e)}")
+
+
+@router.delete("/accounts/link/{account_id}")
+async def unlink_account(
+    account_id: str,
+    client_id: str = Query(..., description="Client ID"),
+) -> dict[str, bool]:
+    """Unlink a bank account.
+    
+    Args:
+        account_id: Account ID to unlink
+        client_id: Client ID
+        
+    Returns:
+        Success status
+    """
+    # Validate input
+    client_id = validate_client_id(client_id)
+    
+    try:
+        success = AccountLinkingService.unlink_account(client_id, account_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Account not found")
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to unlink account: {str(e)}")
+
+
+@router.post("/test/balances", tags=["test"])
+async def test_balances_manual(request: TestBalancesRequest) -> dict:
+    """Test endpoint for manually testing balance retrieval with token.
+    
+    This endpoint allows you to:
+    1. Get token from POST /api/tokens/{bank}
+    2. Get consent_id from POST /api/consents/accounts
+    3. Use this endpoint to test balance retrieval directly
+    
+    Args:
+        request: Test request with bank, account_id, client_id, access_token, and optional consent_id
+        
+    Returns:
+        Raw response from bank API
+        
+    Raises:
+        HTTPException: If request fails
+    """
+    from app.clients.factory import get_bank_client
+    from app.settings import settings
+    
+    # Validate bank code
+    bank_lower = validate_bank_code(request.bank)
+    client_id = validate_client_id(request.client_id)
+    
+    try:
+        client = get_bank_client(bank_lower)
+        try:
+            # Make direct request to bank API
+            balances_response = await client.get_balances(
+                bank_token=request.access_token,
+                account_id=request.account_id,
+                client_id=client_id,
+                requesting_bank=settings.requesting_bank_id,
+                consent_id=request.consent_id,
+            )
+            return {
+                "success": True,
+                "bank": bank_lower,
+                "account_id": request.account_id,
+                "client_id": client_id,
+                "consent_id": request.consent_id,
+                "response": balances_response,
+            }
+        finally:
+            await client.close()
+    except BankAPIError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+    except Exception as e:
+        logger.error(f"Error testing balances: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")

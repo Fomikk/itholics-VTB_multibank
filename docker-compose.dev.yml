@@ -23,4 +23,6 @@ services:
     command: npm run dev
     ports:
       - "5173:5173"
+    environment:
+      - API_URL=http://backend:8000
 

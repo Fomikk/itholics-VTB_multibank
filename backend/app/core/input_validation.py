@@ -5,6 +5,66 @@ from typing import Optional
 from fastapi import HTTPException
 
 
+def validate_bank_code(bank: str) -> str:
+    """Validate bank code.
+
+    Args:
+        bank: Bank code (vbank, abank, sbank)
+
+    Returns:
+        Lowercase validated bank code
+
+    Raises:
+        HTTPException: If bank code is invalid
+    """
+    if not bank:
+        raise HTTPException(status_code=400, detail="Bank code is required")
+    
+    bank_lower = bank.lower().strip()
+    valid_banks = {"vbank", "abank", "sbank"}
+    
+    if bank_lower not in valid_banks:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid bank code: {bank}. Must be one of: {', '.join(valid_banks)}"
+        )
+    
+    return bank_lower
+
+
+def validate_client_id(client_id: str) -> str:
+    """Validate client ID.
+
+    Args:
+        client_id: Client identifier
+
+    Returns:
+        Validated client ID
+
+    Raises:
+        HTTPException: If client ID is invalid
+    """
+    if not client_id:
+        raise HTTPException(status_code=400, detail="Client ID is required")
+    
+    client_id = client_id.strip()
+    
+    # Allow alphanumeric, hyphens, underscores
+    if not re.match(r'^[a-zA-Z0-9\-_]+$', client_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid client ID format. Use alphanumeric characters, hyphens, or underscores"
+        )
+    
+    if len(client_id) < 3 or len(client_id) > 100:
+        raise HTTPException(
+            status_code=400,
+            detail="Client ID must be between 3 and 100 characters"
+        )
+    
+    return client_id
+
+
 def validate_date_format(date_str: str) -> datetime:
     """Validate and parse ISO date string.
 

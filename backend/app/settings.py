@@ -7,7 +7,7 @@ class Settings(BaseSettings):
 
     # App
     app_env: str = "dev"
-    requesting_bank_id: str = "team200"
+    requesting_bank_id: str = "team268"
 
     # Bank URLs
     vbank_base_url: str = "https://vbank.open.bankingapi.ru"

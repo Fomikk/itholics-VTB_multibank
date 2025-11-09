@@ -2,7 +2,7 @@ import axios from 'axios'
 
 const apiClient = axios.create({
   baseURL: '/api',
-  timeout: 15000,
+  timeout: 30000, // Увеличено до 30 секунд для медленных запросов к банкам
   headers: {
     'Content-Type': 'application/json',
   },

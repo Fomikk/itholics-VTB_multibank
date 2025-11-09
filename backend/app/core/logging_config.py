@@ -54,12 +54,21 @@ class SecureJSONFormatter(logging.Formatter):
 
 def setup_logging() -> None:
     """Setup secure logging configuration."""
+    import os
+    
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(SecureJSONFormatter())
     
     logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
+    # Allow DEBUG level if DEBUG env var is set
+    log_level = logging.DEBUG if os.getenv("DEBUG", "").lower() in ("1", "true", "yes") else logging.INFO
+    logger.setLevel(log_level)
     logger.addHandler(handler)
+    
+    # Set specific loggers to DEBUG if needed
+    if log_level == logging.DEBUG:
+        logging.getLogger("app.core.base_client").setLevel(logging.DEBUG)
+        logging.getLogger("app.services.aggregation").setLevel(logging.DEBUG)
     
     # Suppress noisy loggers
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)

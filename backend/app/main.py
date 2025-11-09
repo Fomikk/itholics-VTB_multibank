@@ -13,8 +13,8 @@ app = FastAPI(
     title="FinGuru API",
     description="Мультибанковский агрегатор с кешбек-игрой",
     version="0.1.0",
-    docs_url="/docs" if settings.app_env == "dev" else None,  # Disable docs in production
-    redoc_url="/redoc" if settings.app_env == "dev" else None,
+    docs_url="/docs",  # Always enable docs for development
+    redoc_url="/redoc",
 )
 
 # Security headers middleware (must be first)
@@ -42,4 +42,11 @@ app.add_middleware(
 # Include routers
 app.include_router(health.router)
 app.include_router(banks.router)
+
+
+@app.get("/")
+async def root():
+    """Root endpoint - redirect to docs."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/docs")
 

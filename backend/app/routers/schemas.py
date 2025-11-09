@@ -29,10 +29,12 @@ class ConsentRequest(BaseModel):
 class ConsentResponse(BaseModel):
     """Response for consent creation."""
 
-    consent_id: str
+    consent_id: Optional[str] = None
+    request_id: Optional[str] = None
     status: str
     auto_approved: bool
     bank: str
+    message: Optional[str] = None
 
 
 # Account schemas
@@ -94,3 +96,35 @@ class CashbackActivateResponse(BaseModel):
     valid_until: datetime
     activated_at: datetime
 
+
+# Account linking schemas
+class LinkAccountRequest(BaseModel):
+    """Request for linking a bank account."""
+
+    bank: str = Field(..., description="Bank code (vbank, abank, sbank)")
+    account_number: str = Field(..., description="Account number or identifier")
+    account_id: Optional[str] = Field(None, description="Account ID from bank API (optional)")
+    nickname: Optional[str] = Field(None, description="Nickname for the account")
+
+
+class LinkedAccountResponse(BaseModel):
+    """Response for linked account."""
+
+    id: str
+    bank: str
+    account_number: str
+    account_id: Optional[str] = None
+    nickname: str
+    linked_at: str
+    active: bool
+
+
+# Test schemas for manual testing
+class TestBalancesRequest(BaseModel):
+    """Request for testing balances with manual token."""
+
+    bank: str = Field(..., description="Bank code (vbank, abank, sbank)")
+    account_id: str = Field(..., description="Account ID")
+    client_id: str = Field(..., description="Client ID (e.g., team268-1)")
+    access_token: str = Field(..., description="Access token from POST /api/tokens/{bank}")
+    consent_id: Optional[str] = Field(None, description="Consent ID (optional, will be used if provided)")

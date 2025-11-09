@@ -1,0 +1,72 @@
+@startuml consent-flow-manual
+!theme cerulean-outline
+skinparam backgroundColor #FEFEFE
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign center
+skinparam BoxPadding 20
+skinparam ParticipantPadding 20
+
+title Межбанковые согласия с ручным одобрением - Sequence Diagram\n<size:11><color:#666>HackAPI 2025 - Production-like Flow</color></size>
+
+actor "Приложение\n(team200)" as App #LightBlue
+participant "Банк\n(SBank)" as Bank #90EE90
+actor "Клиент\n(team200-1)" as Client #LightYellow
+actor "Банкир\n(admin)" as Banker #LightPink
+
+== Вариант 2: Ручное одобрение банкиром (SBank) ==
+
+note over App, Banker #FFE4B5
+  **⚠️ Примечание:** Настройки могут измениться по ходу хакатона.
+  Текущие: VBank, ABank - автоматически | SBank - вручную
+end note
+
+App -> Bank: **1️⃣ POST /auth/bank-token**\n?client_id=team200&client_secret=***
+activate Bank
+Bank --> App: <color:#28a745>200 OK</color> {access_token}
+deactivate Bank
+
+App -> Bank: **2️⃣ POST /account-consents/request**\nAuthorization: Bearer {token}\nX-Requesting-Bank: team200\n{\n  permissions: [...],\n  client_id: "team200-1"\n}
+activate Bank
+note right of Bank
+  ⏳ **Создаёт запрос**
+  Статус: **pending**
+  (ожидает одобрения)
+end note
+Bank --> App: <color:#ffc107>200 OK</color>\n{\n  request_id: "req-xyz789",\n  status: "pending",\n  auto_approved: false\n}
+deactivate Bank
+
+Bank -> Client: 📧 **Уведомление**\n"Запрос на доступ\nот приложения team200"
+
+Client -> Bank: **3️⃣ Логин в банк**\n/client/consents.html
+activate Bank
+Bank --> Client: Страница с запросами
+deactivate Bank
+
+Client -> Client: **4️⃣ Просмотр запроса**\n- Permissions\n- Requesting app\n- Срок действия
+
+Client -> Bank: **5️⃣ Нажимает "Подписать"**\nPOST /account-consents/sign
+activate Bank
+note right of Bank
+  ✅ **Одобряет согласие**
+  Статус: **active**
+  Создаёт consent_id
+end note
+Bank --> Client: <color:#28a745>200 OK</color>\nСогласие одобрено
+deactivate Bank
+
+App -> Bank: **6️⃣ GET /accounts**\n(повторная попытка)\n?client_id=team200-1\nX-Consent-Id: consent-abc123
+activate Bank
+note right of Bank
+  ✓ Согласие найдено
+  (теперь active)
+end note
+Bank --> App: <color:#28a745>200 OK</color> {accounts: [...]} 
+deactivate Bank
+
+note over App, Bank #FFE4B5
+  **⏱️ Итого: 3 API запроса + 3 UI действия клиента**
+  Подходит для: реалистичный production flow, демонстрация полного цикла
+end note
+
+@enduml

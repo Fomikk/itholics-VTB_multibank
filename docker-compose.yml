@@ -27,7 +27,7 @@ services:
     container_name: finguru-backend
     environment:
       - APP_ENV=production
-      - REQUESTING_BANK_ID=${REQUESTING_BANK_ID:-team200}
+      - REQUESTING_BANK_ID=${REQUESTING_BANK_ID:-team268}
       - VBANK_BASE_URL=${VBANK_BASE_URL:-https://vbank.open.bankingapi.ru}
       - ABANK_BASE_URL=${ABANK_BASE_URL:-https://abank.open.bankingapi.ru}
       - SBANK_BASE_URL=${SBANK_BASE_URL:-https://sbank.open.bankingapi.ru}

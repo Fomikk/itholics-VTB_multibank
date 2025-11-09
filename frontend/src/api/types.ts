@@ -42,6 +42,16 @@ export interface CashbackBonus {
   activated_at: string
 }
 
+export interface LinkedAccount {
+  id: string
+  bank: string
+  account_number: string
+  account_id?: string
+  nickname: string
+  linked_at: string
+  active: boolean
+}
+
 export interface CashbackActivateRequest {
   client_id: string
   category: string

@@ -180,12 +180,17 @@ class BaseBankClient:
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 403:
                 error_detail = e.response.text
-                if "CONSENT_REQUIRED" in error_detail or "consent" in error_detail.lower():
+                # Handle CONSENT_REQUIRED or PENDING consent errors
+                if (
+                    "CONSENT_REQUIRED" in error_detail.upper()
+                    or "consent" in error_detail.lower()
+                    or "PENDING" in error_detail.upper()
+                ):
                     from app.core.exceptions import ConsentRequiredError
 
                     raise ConsentRequiredError(
                         status_code=403,
-                        detail="Consent is required for this operation",
+                        detail="Consent is required for this operation. Create consent first or wait for manual approval (SBank).",
                     )
             raise BankAPIError(
                 status_code=e.response.status_code,
@@ -266,6 +271,9 @@ class BaseBankClient:
         Raises:
             BankAPIError: If request fails
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
         url = f"{self.base_url}/accounts/{account_id}/balances"
         headers = self._build_headers(
             bank_token, requesting_bank=requesting_bank, consent_id=consent_id
@@ -274,16 +282,46 @@ class BaseBankClient:
         if client_id:
             params["client_id"] = client_id
 
+        # Log request details for debugging
+        logger.info(f"🔍 GET balances: URL={url}, account_id={account_id}, client_id={client_id}, requesting_bank={requesting_bank}, consent_id={consent_id}")
+        logger.debug(f"   Headers: Authorization=Bearer ***, X-Requesting-Bank={requesting_bank}, X-Consent-Id={consent_id}")
+        logger.debug(f"   Params: {params}")
+
         try:
             response = await self._client.get(url, headers=headers, params=params)
+            logger.info(f"📥 Response status: {response.status_code} for account {account_id}")
+            
             response.raise_for_status()
-            return response.json()
+            response_data = response.json()
+            logger.debug(f"📦 Response data keys: {list(response_data.keys()) if isinstance(response_data, dict) else 'not a dict'}")
+            return response_data
         except httpx.HTTPStatusError as e:
+            logger.error(f"❌ HTTP Error {e.response.status_code} getting balances for account {account_id}")
+            logger.error(f"   URL: {url}")
+            logger.error(f"   Response text: {e.response.text[:500]}")
+            logger.error(f"   Headers sent: X-Requesting-Bank={requesting_bank}, X-Consent-Id={consent_id}")
+            
+            if e.response.status_code == 403:
+                error_detail = e.response.text
+                # Handle CONSENT_REQUIRED or PENDING consent errors
+                if (
+                    "CONSENT_REQUIRED" in error_detail.upper()
+                    or "consent" in error_detail.lower()
+                    or "PENDING" in error_detail.upper()
+                ):
+                    from app.core.exceptions import ConsentRequiredError
+
+                    raise ConsentRequiredError(
+                        status_code=403,
+                        detail=f"Consent is required for getting balances: {error_detail}",
+                    )
             raise BankAPIError(
                 status_code=e.response.status_code,
                 detail=f"Failed to get balances: {e.response.text}",
             )
         except httpx.RequestError as e:
+            logger.error(f"❌ Network error getting balances for account {account_id}: {str(e)}")
+            logger.error(f"   URL: {url}")
             raise BankAPIError(
                 status_code=503,
                 detail=f"Network error while getting balances: {str(e)}",
@@ -340,6 +378,19 @@ class BaseBankClient:
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as e:
+            if e.response.status_code == 403:
+                error_detail = e.response.text
+                if (
+                    "CONSENT_REQUIRED" in error_detail.upper()
+                    or "consent" in error_detail.lower()
+                    or "PENDING" in error_detail.upper()
+                ):
+                    from app.core.exceptions import ConsentRequiredError
+
+                    raise ConsentRequiredError(
+                        status_code=403,
+                        detail=f"Consent is required for getting transactions: {error_detail}",
+                    )
             raise BankAPIError(
                 status_code=e.response.status_code,
                 detail=f"Failed to get transactions: {e.response.text}",
