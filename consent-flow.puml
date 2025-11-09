@@ -1,0 +1,54 @@
+@startuml consent-flow
+!theme cerulean-outline
+skinparam backgroundColor #FEFEFE
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam sequenceMessageAlign center
+skinparam BoxPadding 20
+skinparam ParticipantPadding 20
+
+title Межбанковые согласия - Sequence Diagram\n<size:11><color:#666>HackAPI 2025 - Федеративная OpenBanking платформа</color></size>
+
+actor "Приложение\n(team200)" as App #LightBlue
+participant "Банк\n(VBank)" as Bank #ADD8E6
+actor "Клиент\n(team200-1)" as Client #LightYellow
+
+== Вариант 1: Автоматическое одобрение (VBank, ABank) ==
+
+note over App, Client #LightYellow
+  **⚠️ Примечание:** Настройки банков могут измениться.
+  Текущие: VBank, ABank - автоматически | SBank - вручную
+end note
+
+App -> Bank: **1️⃣ POST /auth/bank-token**\n?client_id=team200\n&client_secret=***
+activate Bank
+Bank --> App: <color:#28a745>200 OK</color>\n{access_token: "eyJhbG..."}
+deactivate Bank
+
+App -> Bank: **2️⃣ POST /account-consents/request**\nAuthorization: Bearer {token}\nX-Requesting-Bank: team200\n{\n  permissions: ["ReadAccountsDetail", "ReadBalances"],\n  client_id: "team200-1"\n}
+activate Bank
+note right of Bank
+  ✅ **Авто-одобрение**
+  Создаёт consent
+  сразу в статусе
+  **active**
+end note
+Bank --> App: <color:#28a745>200 OK</color>\n{\n  consent_id: "consent-abc123",\n  status: "approved",\n  auto_approved: true\n}
+deactivate Bank
+
+App -> Bank: **3️⃣ GET /accounts**\n?client_id=team200-1\nAuthorization: Bearer {token}\nX-Requesting-Bank: team200\nX-Consent-Id: consent-abc123
+activate Bank
+note right of Bank
+  ✓ Проверка
+  согласия
+  (найдено)
+end note
+Bank --> App: <color:#28a745>200 OK</color>\n{accounts: [...]} 
+deactivate Bank
+
+note over App, Bank #LightGreen
+  **⏱️ Итого: 3 запроса → готово к работе**
+  Подходит для: быстрая разработка, прототипирование
+end note
+
+@enduml

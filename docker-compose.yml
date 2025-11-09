@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  # PostgreSQL database
+  db:
+    image: postgres:15-alpine
+    container_name: finguru-db
+    environment:
+      POSTGRES_USER: finguru
+      POSTGRES_PASSWORD: finguru_password
+      POSTGRES_DB: finguru
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finguru"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: finguru-backend
+    environment:
+      - APP_ENV=production
+      - REQUESTING_BANK_ID=${REQUESTING_BANK_ID:-team268}
+      - VBANK_BASE_URL=${VBANK_BASE_URL:-https://vbank.open.bankingapi.ru}
+      - ABANK_BASE_URL=${ABANK_BASE_URL:-https://abank.open.bankingapi.ru}
+      - SBANK_BASE_URL=${SBANK_BASE_URL:-https://sbank.open.bankingapi.ru}
+      - VBANK_CLIENT_ID=${VBANK_CLIENT_ID}
+      - VBANK_CLIENT_SECRET=${VBANK_CLIENT_SECRET}
+      - ABANK_CLIENT_ID=${ABANK_CLIENT_ID}
+      - ABANK_CLIENT_SECRET=${ABANK_CLIENT_SECRET}
+      - SBANK_CLIENT_ID=${SBANK_CLIENT_ID}
+      - SBANK_CLIENT_SECRET=${SBANK_CLIENT_SECRET}
+      - HTTP_TIMEOUT_SECONDS=${HTTP_TIMEOUT_SECONDS:-15}
+      - CACHE_TTL_SECONDS=${CACHE_TTL_SECONDS:-300}
+      # Database (if needed in future)
+      - DATABASE_URL=postgresql://finguru:finguru_password@db:5432/finguru
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: finguru-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+
+volumes:
+  postgres_data:
+
